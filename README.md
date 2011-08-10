@@ -16,3 +16,7 @@ Date: (dd-1)+(mm-1)*31 where dd is 1..31 and mm is 1..12!
 The next 6 fields are times for
 Fajr, Shurooq, Dhuhr, Asr, Maghrib, Isha as hh*60+mm where hh is 0..23 and mm is 0..59
 
+tmp folder
+==========
+The tmp folder contains the original text file copied/pasted from the pdf file mentioned above, as well as the perl script used to process it.
+
