@@ -39,8 +39,8 @@ clean:
 # Validate data files
 validate: $(SOURCE)
 	@echo "Validating CSV..."
-	@wc -l $(SOURCE) | grep -q "365" && echo "OK: 365 entries found" || { echo "ERROR: Expected 365 entries"; exit 1; }
-	@head -1 $(SOURCE) | grep -q "1/1" && echo "OK: Starts with 1/1" || { echo "ERROR: Should start with 1/1"; exit 1; }
+	@[ "$$(wc -l < $(SOURCE))" = "365" ] && echo "OK: 365 entries found" || { echo "ERROR: Expected 365 entries"; exit 1; }
+	@head -1 $(SOURCE) | grep -Eq "^1/1," && echo "OK: Starts with 1/1" || { echo "ERROR: Should start with 1/1"; exit 1; }
 
 # Show statistics
 stats: $(SOURCE)

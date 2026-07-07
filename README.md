@@ -35,11 +35,11 @@ Primary format with date and times in `HH:MM` format.
 Compact format for efficient processing. Times encoded as minutes since midnight.
 
 ```
-0,297,380,697,876,1017,1107
-1,297,380,698,876,1018,1108
+0,1107,1017,876,697,380,297
+1,1108,1018,876,698,380,297
 ```
 
-**Fields:** `encoded_date,fajr,sunrise,dhuhr,asr,maghrib,isha` (chronological)
+**Fields:** `encoded_date,isha,maghrib,asr,dhuhr,sunrise,fajr` (reverse chronological)
 
 - Date encoding: `(day-1) + (month-1) × 31`
 - Time encoding: `hours × 60 + minutes`

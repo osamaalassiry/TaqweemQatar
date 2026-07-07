@@ -23,7 +23,15 @@ use warnings;
 my @MONTHS = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
 my %MONTH_MAP = map { $MONTHS[$_] => $_ + 1 } 0..$#MONTHS;
 
+sub usage_text {
+    return "Usage: $0 [input_file] > taqweem.dat\n";
+}
+
 # Parse command line arguments
+if (@ARGV && ($ARGV[0] eq '-h' || $ARGV[0] eq '--help')) {
+    print usage_text();
+    exit 0;
+}
 my $input_file = shift @ARGV // 'taqweem.txt';
 
 # Validate input file exists
@@ -81,8 +89,8 @@ while (my $line = <$fh>) {
         my $hours = $parts[$i * 2];
         my $minutes = $parts[$i * 2 + 1];
 
-        # Add 12 hours to PM times (Isha, Asr, Dhuhr are PM)
-        $hours += 12 if $i == 0 || $i == 2 || $i == 3;
+        # Add 12 hours to PM times (Isha, Maghrib, Asr)
+        $hours += 12 if $i == 0 || $i == 1 || $i == 2;
 
         # Validate time ranges
         die "Error: Invalid hours '$hours' at line $line_num\n"
@@ -92,9 +100,6 @@ while (my $line = <$fh>) {
 
         $times[$i] = $hours * 60 + $minutes;
     }
-
-    # Reverse order: Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha
-    @times = reverse @times;
 
     # Encode date: (day-1) + (month-1) * 31
     my $encoded_date = ($day - 1) + ($month - 1) * 31;
@@ -111,6 +116,7 @@ close $fh;
 # Validate we processed expected number of entries
 if ($entry_count != 365) {
     warn "Warning: Expected 365 entries, processed $entry_count\n";
+    exit 1;
 }
 
 exit 0;

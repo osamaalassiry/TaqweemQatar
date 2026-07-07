@@ -23,6 +23,7 @@ use strict;
 use warnings;
 use Getopt::Long;
 use POSIX qw(strftime);
+use Time::Local qw(timegm);
 use File::Basename;
 use File::Spec;
 
@@ -30,6 +31,10 @@ use File::Spec;
 my @PRAYERS = qw(Fajr Sunrise Dhuhr Asr Maghrib Isha);
 my @IQAMA   = (25, 0, 20, 25, 10, 20);  # Minutes after athan for congregation
 my @LENGTH  = (4, 0, 8, 8, 6, 8);       # Prayer duration in minutes
+
+sub usage_text {
+    return "Usage: $0 [--year YYYY] [--input FILE] [--no-athan] [--no-prayer]\n";
+}
 
 # Parse command line options
 my $year = (localtime)[5] + 1900;  # Current year
@@ -42,6 +47,7 @@ GetOptions(
     'input=s'    => \$input_file,
     'no-athan'   => sub { $include_athan = 0 },
     'no-prayer'  => sub { $include_prayer = 0 },
+    'help|h'     => sub { print usage_text(); exit 0 },
 ) or die "Error: Invalid options\n";
 
 # Validate input file
@@ -57,10 +63,11 @@ die "Error: Invalid year '$year'\n" unless $year >= 1900 && $year <= 2100;
 sub format_datetime {
     my ($year, $month, $day, $minutes) = @_;
 
-    my $hours = int($minutes / 60);
-    my $mins = $minutes % 60;
+    my $epoch = timegm(0, 0, 0, $day, $month - 1, $year) + ($minutes * 60);
+    my ($sec, $mins, $hours, $mday, $mon, $out_year) = gmtime($epoch);
 
-    return sprintf("%04d%02d%02dT%02d%02d00", $year, $month, $day, $hours, $mins);
+    return sprintf("%04d%02d%02dT%02d%02d00",
+        $out_year + 1900, $mon + 1, $mday, $hours, $mins);
 }
 
 sub generate_uid {
@@ -80,13 +87,14 @@ sub next_leap_year {
 }
 
 sub print_event {
-    my ($summary, $start, $end, $uid) = @_;
+    my ($summary, $start, $end, $uid, $yearly) = @_;
+    $yearly //= 1;
 
     print "BEGIN:VEVENT\n";
     print "UID:$uid\n";
     print "DTSTART;TZID=Asia/Qatar:$start\n";
     print "DTEND;TZID=Asia/Qatar:$end\n";
-    print "RRULE:FREQ=YEARLY\n";
+    print "RRULE:FREQ=YEARLY\n" if $yearly;
     print "DTSTAMP:" . strftime("%Y%m%dT%H%M%SZ", gmtime()) . "\n";
     print "SUMMARY:$summary\n";
     print "DESCRIPTION:Qatar prayer times from Qatar Calendar House\n";
@@ -96,7 +104,8 @@ sub print_event {
 }
 
 sub print_day_events {
-    my ($event_year, $month, $day, $times_ref) = @_;
+    my ($event_year, $month, $day, $times_ref, $yearly) = @_;
+    $yearly //= 1;
     my $event_count = 0;
 
     # Generate events for each prayer
@@ -113,7 +122,7 @@ sub print_day_events {
             my $end = format_datetime($event_year, $month, $day, $time + 2);
             my $uid = generate_uid("athan-$prayer", $month, $day);
 
-            print_event("Athan $prayer", $start, $end, $uid);
+            print_event("Athan $prayer", $start, $end, $uid, $yearly);
             $event_count++;
         }
 
@@ -126,7 +135,7 @@ sub print_day_events {
             my $end = format_datetime($event_year, $month, $day, $prayer_end);
             my $uid = generate_uid("prayer-$prayer", $month, $day);
 
-            print_event("Prayer $prayer", $start, $end, $uid);
+            print_event("Prayer $prayer", $start, $end, $uid, $yearly);
             $event_count++;
         }
     }
@@ -169,6 +178,7 @@ open my $fh, '<', $input_file
 
 my $entry_count = 0;
 my $event_count = 0;
+my $invalid_lines = 0;
 my @feb28_times;
 
 while (my $line = <$fh>) {
@@ -179,10 +189,12 @@ while (my $line = <$fh>) {
 
     if (@fields != 7) {
         warn "Warning: Invalid line format, skipping: $line\n";
+        $invalid_lines++;
         next;
     }
 
     my ($encoded_date, @times) = @fields;
+    @times = reverse @times;
 
     # Decode date
     my $day = ($encoded_date % 31) + 1;
@@ -198,7 +210,7 @@ close $fh;
 
 if (@feb28_times) {
     my $leap_year = next_leap_year($year);
-    $event_count += print_day_events($leap_year, 2, 29, \@feb28_times);
+    $event_count += print_day_events($leap_year, 2, 29, \@feb28_times, 0);
 }
 
 # Calendar footer
@@ -207,4 +219,4 @@ print "END:VCALENDAR\n";
 # Summary to stderr
 warn "Generated $event_count events from $entry_count days\n";
 
-exit 0;
+exit($invalid_lines ? 1 : 0);

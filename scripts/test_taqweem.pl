@@ -259,6 +259,16 @@ if (-f $dat_file) {
 
     is(scalar(@dat_lines), 365, "DAT has 365 entries");
 
+    my (undef, $jan1_isha, $jan1_maghrib, $jan1_asr, $jan1_dhuhr) =
+        split /,/, $csv_lines[0];
+    my (undef, $dat_isha, $dat_maghrib, $dat_asr, $dat_dhuhr) =
+        split /,/, $dat_lines[0];
+
+    is($dat_isha, _to_minutes($jan1_isha), "DAT Jan 1 Isha matches CSV");
+    is($dat_maghrib, _to_minutes($jan1_maghrib), "DAT Jan 1 Maghrib matches CSV");
+    is($dat_asr, _to_minutes($jan1_asr), "DAT Jan 1 Asr matches CSV");
+    is($dat_dhuhr, _to_minutes($jan1_dhuhr), "DAT Jan 1 Dhuhr matches CSV");
+
     # Check iCalendar leap-day events use Feb 28 times
     my @ical_lines;
     my $ical_cmd = "$^X $script_dir/ical.pl --input $dat_file --year 2028 2>/dev/null";
@@ -298,11 +308,24 @@ if (-f $dat_file) {
     }
 
     ok($leap_day_errors == 0, "ICS February 29 events match February 28 times ($leap_day_errors errors)");
+    my $feb29_rrules = 0;
+    for my $event (split /BEGIN:VEVENT\n/, join('', @ical_lines)) {
+        next unless $event =~ /^DTSTART;TZID=Asia\/Qatar:20280229T/m;
+        $feb29_rrules++ if $event =~ /^RRULE:/m;
+    }
+    is($feb29_rrules, 0, "ICS February 29 fallback events are not yearly recurring");
+    my %jan1_seen = map { $_ => 1 }
+        map { @$_ } @starts_by_summary{'Athan Fajr', 'Athan Isha'};
+    ok($jan1_seen{'20280101T045700'}, "ICS Jan 1 Athan Fajr matches CSV");
+    ok($jan1_seen{'20280101T182700'}, "ICS Jan 1 Athan Isha matches CSV");
 } else {
     ok(1, "DAT file not generated yet (skip)");
     ok(1, "DAT entries check (skip)");
     ok(1, "ICS February 29 event count check (skip)");
     ok(1, "ICS February 29 time match check (skip)");
+    ok(1, "ICS February 29 RRULE check (skip)");
+    ok(1, "ICS Jan 1 Athan Fajr check (skip)");
+    ok(1, "ICS Jan 1 Athan Isha check (skip)");
 }
 
 # Test 11: expand.pl preserves a prayer exactly at midnight
@@ -322,11 +345,101 @@ if (open my $expand_fh, '-|', $^X, "$script_dir/expand.pl", '--input', $midnight
 }
 
 ok($expand_status == 0, "expand.pl runs with synthetic midnight DAT input");
-is(scalar(@midnight_output), 12, "expand.pl prints all 6 prayers with a midnight time");
+is(scalar(@midnight_output), 11, "expand.pl prints all athan events and non-sunrise prayer events");
 like(join('', @midnight_output), qr/^1\/1,Dhuhr: Athan,00:00,00:02$/m,
     "expand.pl prints the midnight prayer");
 like(join('', @midnight_output), qr/^1\/1,Isha: Athan,05:00,05:02$/m,
     "expand.pl continues after the midnight prayer");
+
+# Test 12: convert.pl exits nonzero for incomplete input
+my ($short_fh, $short_file) = tempfile(
+    'convert-short-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$short_fh} "Jan\n6 27 4 57 2 36 11 37 6 20 4 57\n";
+close $short_fh;
+
+my $convert_output = "$short_file.dat";
+my $convert_status = system("$^X '$script_dir/convert.pl' '$short_file' > '$convert_output' 2>/dev/null");
+unlink $convert_output;
+ok($convert_status != 0, "convert.pl exits nonzero for incomplete input");
+
+# Test 13: json_export.pl escapes JSON control characters
+my ($json_fh, $json_input) = tempfile(
+    'json-control-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$json_fh} "1/1,18:27,16:57,14:36,11:37,6:20,4:57\t\n";
+close $json_fh;
+
+my $json_output = "$json_input.out";
+my $json_status = system("$^X '$script_dir/json_export.pl' --input '$json_input' > '$json_output' 2>/dev/null");
+my $json_decode_status = system("$^X -MJSON::PP -e 'local \$/; decode_json(<STDIN>)' < '$json_output' 2>/dev/null");
+unlink $json_output;
+ok($json_status == 0 && $json_decode_status == 0, "json_export.pl emits valid JSON for control characters");
+
+# Test 14: json_export.pl skips non-numeric dates
+my ($bad_date_fh, $bad_date_input) = tempfile(
+    'json-bad-date-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$bad_date_fh} "abc/1,18:27,16:57,14:36,11:37,6:20,4:57\n";
+close $bad_date_fh;
+
+my $bad_date_output = "$bad_date_input.out";
+my $bad_date_err = "$bad_date_input.err";
+my $bad_date_status = system("$^X '$script_dir/json_export.pl' --input '$bad_date_input' > '$bad_date_output' 2> '$bad_date_err'");
+open my $bad_date_out_fh, '<', $bad_date_output;
+my $bad_date_json = do { local $/; <$bad_date_out_fh> };
+close $bad_date_out_fh;
+open my $bad_date_err_fh, '<', $bad_date_err;
+my $bad_date_warning = do { local $/; <$bad_date_err_fh> };
+close $bad_date_err_fh;
+unlink $bad_date_output, $bad_date_err;
+ok($bad_date_status == 0 && $bad_date_json !~ /"day":0/ && $bad_date_warning =~ /Invalid date/,
+    "json_export.pl skips non-numeric date fields with a warning");
+
+# Test 15: json_export.pl and ical.pl exit nonzero for malformed rows
+my ($bad_json_fh, $bad_json_input) = tempfile(
+    'json-bad-row-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$bad_json_fh} "1/1,18:27\n";
+close $bad_json_fh;
+my $bad_json_status = system("$^X '$script_dir/json_export.pl' --input '$bad_json_input' > /dev/null 2>/dev/null");
+ok($bad_json_status != 0, "json_export.pl exits nonzero for malformed row field count");
+
+my ($bad_ical_fh, $bad_ical_input) = tempfile(
+    'ical-bad-row-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$bad_ical_fh} "0,1107\n";
+close $bad_ical_fh;
+my $bad_ical_status = system("$^X '$script_dir/ical.pl' --input '$bad_ical_input' > /dev/null 2>/dev/null");
+ok($bad_ical_status != 0, "ical.pl exits nonzero for malformed row field count");
+
+# Test 16: CLI scripts support --help
+for my $script (qw(expand.pl ical.pl json_export.pl convert.pl)) {
+    my $help_status = system("$^X '$script_dir/$script' --help > /dev/null 2>/dev/null");
+    ok($help_status == 0, "$script --help exits 0");
+}
+
+# Test 17: ical.pl rolls late-night events to the next date
+my ($late_fh, $late_input) = tempfile(
+    'ical-late-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$late_fh} "0,0,0,0,0,0,1463\n";
+close $late_fh;
+my $late_output = `$^X '$script_dir/ical.pl' --input '$late_input' --year 2026 --no-prayer 2>/dev/null`;
+like($late_output, qr/UID:athan-fajr-0101\@taqweem\.qa\nDTSTART;TZID=Asia\/Qatar:20260102T002300/,
+    "ical.pl rolls minutes >= 1440 to the next date");
 
 #-------------------------------------------------------------------------------
 # Summary

@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run tests
+        run: make test
+      - name: Validate data
+        run: make validate
+      - name: Verify generated artifacts
+        run: |
+          make clean
+          make all
+          git diff --exit-code -- taqweem.dat taqweem.json
+          diff <(git show HEAD:taqweem.ics | grep -v '^DTSTAMP:') <(grep -v '^DTSTAMP:' taqweem.ics)
