@@ -17,7 +17,9 @@
 
 use strict;
 use warnings;
+use Cwd qw(getcwd);
 use File::Basename;
+use File::Temp qw(tempdir tempfile);
 
 # Load the module under test
 use lib dirname(__FILE__) . '/../lib';
@@ -105,6 +107,43 @@ ok(!$lazy->{_loaded}, "Lazy constructor defers data loading");
 my $lazy_times = $lazy->get_times(1, 1);
 ok(defined $lazy_times, "Lazy instance loads data on first query");
 ok($lazy->{_loaded}, "Lazy instance marks data as loaded after query");
+
+my ($malformed_fh, $malformed_file) = tempfile(
+    'taqweem-malformed-XXXX',
+    DIR    => dirname(__FILE__) . '/..',
+    UNLINK => 1,
+);
+print {$malformed_fh} "1/1,18:27,16:57,14:36,11:37,6:20,4:57\n";
+print {$malformed_fh} "bad,row\n";
+close $malformed_fh;
+
+my $warning = '';
+{
+    local $SIG{__WARN__} = sub { $warning .= join('', @_); };
+    my $malformed_tq = TaqweemQatar->new(data_file => $malformed_file);
+    ok($malformed_tq->{_loaded}, "Constructor loads file with malformed rows");
+}
+like($warning, qr/skipping malformed line/, "Malformed rows produce a warning");
+
+my $orig_cwd = getcwd();
+my $decoy_dir = tempdir('taqweem-decoy-XXXX', TMPDIR => 1, CLEANUP => 1);
+open my $decoy_fh, '>', "$decoy_dir/taqweem.csv"
+    or die "Cannot create decoy CSV: $!";
+print {$decoy_fh} "1/1,0:06,0:05,0:04,0:03,0:02,0:01\n";
+close $decoy_fh;
+
+my $decoy_tq;
+eval {
+    chdir $decoy_dir or die "Cannot chdir to decoy dir: $!";
+    $decoy_tq = TaqweemQatar->new();
+    1;
+} or do {
+    my $err = $@;
+    chdir $orig_cwd;
+    die $err;
+};
+chdir $orig_cwd or die "Cannot restore cwd: $!";
+is($decoy_tq->get_prayer(1, 1, 'fajr'), "4:57", "Default constructor ignores CWD decoy taqweem.csv");
 
 #------------------------------------------------------------------------------
 # get_times tests
@@ -216,6 +255,7 @@ print "\n### get_all_days\n";
 my $all_days = $tq->get_all_days();
 ok(defined $all_days, "get_all_days returns defined value");
 is(scalar(@$all_days), 366, "get_all_days returns 366 days (including leap day fallback)");
+is($tq->get_all_days(), $all_days, "get_all_days returns cached arrayref on repeat calls");
 
 is($all_days->[0]->{date},  "1/1", "First entry in get_all_days is January 1");
 is($all_days->[-1]->{date}, "31/12", "Last entry in get_all_days is December 31");
@@ -271,6 +311,29 @@ is(scalar(@$no_matches), 0, "No dates found for fajr at 12:00");
 # Default tolerance (5 min)
 my $fuzzy = $tq->search_by_time('fajr', '5:00', 3);
 ok(scalar(@$fuzzy) >= 1, "Fuzzy search (tolerance=3) finds matches near 5:00");
+
+my ($wrap_fh, $wrap_file) = tempfile(
+    'taqweem-wrap-XXXX',
+    DIR    => dirname(__FILE__) . '/..',
+    UNLINK => 1,
+);
+open my $source_fh, '<', dirname(__FILE__) . '/../taqweem.csv'
+    or die "Cannot open source CSV for wraparound test: $!";
+my $source_line = 0;
+while (my $line = <$source_fh>) {
+    $source_line++;
+    if ($source_line == 1) {
+        print {$wrap_fh} "1/1,23:58,16:57,14:36,11:37,6:20,4:57\n";
+    } else {
+        print {$wrap_fh} $line;
+    }
+}
+close $source_fh;
+close $wrap_fh;
+
+my $wrap_tq = TaqweemQatar->new(data_file => $wrap_file);
+my $wrap_matches = $wrap_tq->search_by_time('isha', '0:01', 5);
+ok(scalar(@$wrap_matches) == 1, "search_by_time matches across midnight wraparound");
 
 #------------------------------------------------------------------------------
 # Error handling (croak paths)

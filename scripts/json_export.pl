@@ -30,6 +30,10 @@ my @CSV_ORDER = qw(isha maghrib asr dhuhr sunrise fajr);
 my @PRAYER_NAMES = qw(fajr sunrise dhuhr asr maghrib isha);
 my @PRAYER_ARABIC = ('الفجر', 'الشروق', 'الظهر', 'العصر', 'المغرب', 'العشاء');
 
+sub usage_text {
+    return "Usage: $0 [--input FILE] [--pretty|--compact]\n";
+}
+
 # Parse command line options
 my $input_file = File::Spec->catfile(dirname(__FILE__), '..', 'taqweem.csv');
 my $pretty = 0;
@@ -38,6 +42,7 @@ GetOptions(
     'input=s' => \$input_file,
     'pretty'  => \$pretty,
     'compact' => sub { $pretty = 0 },
+    'help|h'  => sub { print usage_text(); exit 0 },
 ) or die "Error: Invalid options\n";
 
 # Validate input file
@@ -51,6 +56,10 @@ sub json_string {
     my ($str) = @_;
     $str =~ s/\\/\\\\/g;
     $str =~ s/"/\\"/g;
+    $str =~ s/\n/\\n/g;
+    $str =~ s/\r/\\r/g;
+    $str =~ s/\t/\\t/g;
+    $str =~ s/([\x00-\x1f])/sprintf("\\u%04x", ord($1))/ge;
     return "\"$str\"";
 }
 
@@ -72,6 +81,7 @@ open my $fh, '<', $input_file
 
 my @entries;
 my $line_num = 0;
+my $invalid_lines = 0;
 
 while (my $line = <$fh>) {
     $line_num++;
@@ -82,6 +92,7 @@ while (my $line = <$fh>) {
 
     if (@fields != 7) {
         warn "Warning: Invalid line format at line $line_num, skipping\n";
+        $invalid_lines++;
         next;
     }
 
@@ -89,6 +100,10 @@ while (my $line = <$fh>) {
 
     # Parse date
     my ($day, $month) = split /\//, $date;
+    if (!defined $day || !defined $month || $day !~ /^\d{1,2}$/ || $month !~ /^\d{1,2}$/) {
+        warn "Warning: Invalid date at line $line_num, skipping\n";
+        next;
+    }
 
     # Build entry
     my %entry = (
@@ -157,4 +172,4 @@ print "}" . newline();
 
 warn "Exported " . scalar(@entries) . " days to JSON\n";
 
-exit 0;
+exit($invalid_lines ? 1 : 0);

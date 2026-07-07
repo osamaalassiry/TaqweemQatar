@@ -19,10 +19,12 @@ package TaqweemQatar;
 use strict;
 use warnings;
 use Carp;
+use Cwd qw(abs_path);
 use File::Basename;
 use File::Spec;
 
 our $VERSION = '1.0';
+our $MODULE_DIR = dirname(abs_path(__FILE__));
 
 # Prayer names
 our @PRAYERS = qw(fajr sunrise dhuhr asr maghrib isha);
@@ -131,6 +133,7 @@ sub get_all_days {
     my ($self) = @_;
 
     $self->_load_data() unless $self->{_loaded};
+    return $self->{_all_days} if $self->{_all_days};
 
     my @days;
     for my $month (1..12) {
@@ -147,7 +150,8 @@ sub get_all_days {
         }
     }
 
-    return \@days;
+    $self->{_all_days} = \@days;
+    return $self->{_all_days};
 }
 
 sub search_by_time {
@@ -172,7 +176,10 @@ sub search_by_time {
         my ($h, $m) = split /:/, $day_time;
         my $day_mins = $h * 60 + $m;
 
-        if (abs($day_mins - $search_mins) <= $tolerance) {
+        my $diff = abs($day_mins - $search_mins);
+        $diff = 1440 - $diff if $diff > 720;
+
+        if ($diff <= $tolerance) {
             push @matches, $day_data;
         }
     }
@@ -208,7 +215,10 @@ sub _load_data {
         next if $line =~ /^\s*$/;
 
         my @fields = split /,/, $line;
-        next unless @fields == 7;
+        if (@fields != 7) {
+            warn "Warning: skipping malformed line in '$file': $line\n";
+            next;
+        }
 
         my ($date, @times) = @fields;
         $self->{_cache}{$date} = \@times;
@@ -223,12 +233,9 @@ sub _load_data {
 
 sub _find_data_file {
     # Try to find taqweem.csv relative to module location
-    my $module_dir = dirname(__FILE__);
-
     my @search_paths = (
-        File::Spec->catfile($module_dir, '..', 'taqweem.csv'),
-        File::Spec->catfile($module_dir, '..', '..', 'taqweem.csv'),
-        'taqweem.csv',
+        File::Spec->catfile($MODULE_DIR, '..', 'taqweem.csv'),
+        File::Spec->catfile($MODULE_DIR, '..', '..', 'taqweem.csv'),
         '/usr/share/taqweem/taqweem.csv',
     );
 
@@ -306,7 +313,8 @@ Returns a single prayer time for the specified date.
 
 =head2 get_all_days()
 
-Returns an arrayref of all 365 days with prayer times.
+Returns an arrayref of 366 entries: the 365 source-data days plus a
+synthetic February 29 entry that duplicates February 28 for leap-year lookups.
 
 =head2 search_by_time($prayer, $time, $tolerance)
 
