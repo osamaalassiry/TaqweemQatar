@@ -165,7 +165,9 @@ sub search_by_time {
     $prayer = lc($prayer);
     croak "Invalid prayer name: $prayer" unless grep { $_ eq $prayer } @PRAYERS;
 
+    croak "Invalid time format: $time" unless $time =~ /^\d{1,2}:\d{2}$/;
     my ($search_h, $search_m) = split /:/, $time;
+    croak "Invalid time format: $time" unless $search_h >= 0 && $search_h <= 23 && $search_m >= 0 && $search_m <= 59;
     my $search_mins = $search_h * 60 + $search_m;
 
     my @matches;

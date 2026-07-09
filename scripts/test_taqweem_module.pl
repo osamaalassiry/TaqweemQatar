@@ -408,6 +408,18 @@ $err = $@;
 ok($err, "search_by_time croaks when time is missing");
 like($err, qr/Time is required/i, "...message says 'Time is required'");
 
+# Malformed time in search_by_time
+eval { $tq->search_by_time('fajr', 'notatime') };
+$err = $@;
+ok($err, "search_by_time croaks when time format is malformed");
+like($err, qr/Invalid time format/i, "...message says 'Invalid time format'");
+
+# Out-of-range time in search_by_time
+eval { $tq->search_by_time('fajr', '99:88') };
+$err = $@;
+ok($err, "search_by_time croaks when time value is out of range");
+like($err, qr/Invalid time format/i, "...message says 'Invalid time format'");
+
 #-------------------------------------------------------------------------------
 # Summary
 #-------------------------------------------------------------------------------
