@@ -402,7 +402,29 @@ unlink $bad_date_output, $bad_date_err;
 ok($bad_date_status == 0 && $bad_date_json !~ /"day":0/ && $bad_date_warning =~ /Invalid date/,
     "json_export.pl skips non-numeric date fields with a warning");
 
-# Test 15: json_export.pl and ical.pl exit nonzero for malformed rows
+# Test 15: json_export.pl skips out-of-range numeric dates
+my ($bad_date_range_fh, $bad_date_range_input) = tempfile(
+    'json-bad-date-range-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$bad_date_range_fh} "99/88,18:27,16:57,14:36,11:37,6:20,4:57\n";
+close $bad_date_range_fh;
+
+my $bad_date_range_output = "$bad_date_range_input.out";
+my $bad_date_range_err = "$bad_date_range_input.err";
+my $bad_date_range_status = system("$^X '$script_dir/json_export.pl' --input '$bad_date_range_input' > '$bad_date_range_output' 2> '$bad_date_range_err'");
+open my $bad_date_range_out_fh, '<', $bad_date_range_output;
+my $bad_date_range_json = do { local $/; <$bad_date_range_out_fh> };
+close $bad_date_range_out_fh;
+open my $bad_date_range_err_fh, '<', $bad_date_range_err;
+my $bad_date_range_warning = do { local $/; <$bad_date_range_err_fh> };
+close $bad_date_range_err_fh;
+unlink $bad_date_range_output, $bad_date_range_err;
+ok($bad_date_range_status == 0 && $bad_date_range_json !~ /"day":99/ && $bad_date_range_json !~ /"month":88/ && $bad_date_range_warning =~ /Invalid date/,
+    "json_export.pl skips out-of-range numeric date fields with a warning");
+
+# Test 16: json_export.pl and ical.pl exit nonzero for malformed rows
 my ($bad_json_fh, $bad_json_input) = tempfile(
     'json-bad-row-XXXX',
     DIR    => "$script_dir/..",

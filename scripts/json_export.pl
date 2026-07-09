@@ -100,7 +100,8 @@ while (my $line = <$fh>) {
 
     # Parse date
     my ($day, $month) = split /\//, $date;
-    if (!defined $day || !defined $month || $day !~ /^\d{1,2}$/ || $month !~ /^\d{1,2}$/) {
+    if (!defined $day || !defined $month || $day !~ /^\d{1,2}$/ || $month !~ /^\d{1,2}$/
+        || $day < 1 || $day > 31 || $month < 1 || $month > 12) {
         warn "Warning: Invalid date at line $line_num, skipping\n";
         next;
     }
