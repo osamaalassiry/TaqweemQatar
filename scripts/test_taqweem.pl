@@ -365,7 +365,26 @@ my $convert_status = system("$^X '$script_dir/convert.pl' '$short_file' > '$conv
 unlink $convert_output;
 ok($convert_status != 0, "convert.pl exits nonzero for incomplete input");
 
-# Test 13: json_export.pl escapes JSON control characters
+# Test 13: expand.pl exits nonzero for malformed DAT rows without bogus 1/1 output
+my ($bad_expand_fh, $bad_expand_input) = tempfile(
+    'expand-bad-row-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$bad_expand_fh} "0,300,240,180,0,60,10\n\nbad,row\n";
+close $bad_expand_fh;
+
+my $bad_expand_output = "$bad_expand_input.out";
+my $bad_expand_status = system("$^X '$script_dir/expand.pl' --input '$bad_expand_input' > '$bad_expand_output' 2>/dev/null");
+open my $bad_expand_out_fh, '<', $bad_expand_output;
+my $bad_expand_text = do { local $/; <$bad_expand_out_fh> };
+close $bad_expand_out_fh;
+unlink $bad_expand_output;
+ok($bad_expand_status != 0, "expand.pl exits nonzero for malformed row field count");
+ok($bad_expand_text !~ /^1\/1,Fajr: Athan,00:00,00:02$/m,
+    "expand.pl does not emit a bogus duplicate 1/1 row for malformed input");
+
+# Test 14: json_export.pl escapes JSON control characters
 my ($json_fh, $json_input) = tempfile(
     'json-control-XXXX',
     DIR    => "$script_dir/..",
@@ -380,7 +399,7 @@ my $json_decode_status = system("$^X -MJSON::PP -e 'local \$/; decode_json(<STDI
 unlink $json_output;
 ok($json_status == 0 && $json_decode_status == 0, "json_export.pl emits valid JSON for control characters");
 
-# Test 14: json_export.pl skips non-numeric dates
+# Test 15: json_export.pl skips non-numeric dates
 my ($bad_date_fh, $bad_date_input) = tempfile(
     'json-bad-date-XXXX',
     DIR    => "$script_dir/..",
@@ -402,7 +421,7 @@ unlink $bad_date_output, $bad_date_err;
 ok($bad_date_status == 0 && $bad_date_json !~ /"day":0/ && $bad_date_warning =~ /Invalid date/,
     "json_export.pl skips non-numeric date fields with a warning");
 
-# Test 15: json_export.pl skips out-of-range numeric dates
+# Test 16: json_export.pl skips out-of-range numeric dates
 my ($bad_date_range_fh, $bad_date_range_input) = tempfile(
     'json-bad-date-range-XXXX',
     DIR    => "$script_dir/..",
@@ -424,7 +443,7 @@ unlink $bad_date_range_output, $bad_date_range_err;
 ok($bad_date_range_status == 0 && $bad_date_range_json !~ /"day":99/ && $bad_date_range_json !~ /"month":88/ && $bad_date_range_warning =~ /Invalid date/,
     "json_export.pl skips out-of-range numeric date fields with a warning");
 
-# Test 16: json_export.pl and ical.pl exit nonzero for malformed rows
+# Test 17: json_export.pl and ical.pl exit nonzero for malformed rows
 my ($bad_json_fh, $bad_json_input) = tempfile(
     'json-bad-row-XXXX',
     DIR    => "$script_dir/..",
@@ -445,13 +464,13 @@ close $bad_ical_fh;
 my $bad_ical_status = system("$^X '$script_dir/ical.pl' --input '$bad_ical_input' > /dev/null 2>/dev/null");
 ok($bad_ical_status != 0, "ical.pl exits nonzero for malformed row field count");
 
-# Test 16: CLI scripts support --help
+# Test 18: CLI scripts support --help
 for my $script (qw(expand.pl ical.pl json_export.pl convert.pl)) {
     my $help_status = system("$^X '$script_dir/$script' --help > /dev/null 2>/dev/null");
     ok($help_status == 0, "$script --help exits 0");
 }
 
-# Test 17: ical.pl rolls late-night events to the next date
+# Test 19: ical.pl rolls late-night events to the next date
 my ($late_fh, $late_input) = tempfile(
     'ical-late-XXXX',
     DIR    => "$script_dir/..",

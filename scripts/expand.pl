@@ -50,9 +50,19 @@ my @prayers=('Fajr','Sunrise','Dhuhr','Asr','Maghrib','Isha');
 my @iqama=(25,0,20,25,10,20);
 my @length=(2*2,0*2,2*4,2*4,2*3,2*4);
 open my $tt,'<',$input_file or die "Error: Cannot open input file '$input_file': $!\n";
-while(<$tt>){
-    chomp;
-    my @line=split /,/;
+my $line_num = 0;
+my $invalid_lines = 0;
+while(my $line = <$tt>){
+    $line_num++;
+    chomp $line;
+    next if $line =~ /^\s*$/;
+
+    my @line=split /,/, $line;
+    if (@line != 7 || grep { !defined $_ || $_ !~ /^\d+$/ } @line) {
+        warn "Warning: Invalid line format at line $line_num, skipping\n";
+        $invalid_lines++;
+        next;
+    }
     @line=reverse @line;
     my $day=pop @line;
     my $dateday=$day % 31;
@@ -73,3 +83,4 @@ while(<$tt>){
 #    print join('*',@line),"\n";
 }
 close $tt;
+exit 1 if $invalid_lines;

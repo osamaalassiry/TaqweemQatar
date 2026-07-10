@@ -246,6 +246,25 @@ is($jan1_iqama->{isha_iqama},    "18:47", "Isha iqama: 18:27 + 20 min = 18:47");
 # Sunrise should NOT have an iqama time
 ok(!exists $jan1_iqama->{sunrise_iqama}, "Sunrise has no iqama (skipped as documented)");
 
+my ($bad_iqama_fh, $bad_iqama_file) = tempfile(
+    'taqweem-bad-iqama-XXXX',
+    DIR    => dirname(__FILE__) . '/..',
+    UNLINK => 1,
+);
+print {$bad_iqama_fh} "1/1,badtime,16:57,14:36,11:37,6:20,4:57\n";
+close $bad_iqama_fh;
+
+my $bad_iqama_tq = TaqweemQatar->new(data_file => $bad_iqama_file);
+my $bad_iqama_warning = '';
+{
+    local $SIG{__WARN__} = sub { $bad_iqama_warning .= join('', @_); };
+    eval { $bad_iqama_tq->get_times_with_iqama(1, 1) };
+}
+my $bad_iqama_err = $@;
+ok($bad_iqama_err, "get_times_with_iqama croaks on malformed athan time");
+like($bad_iqama_err, qr/Invalid athan time for isha: badtime/, "...message identifies malformed athan time");
+ok($bad_iqama_warning !~ /isn't numeric|uninitialized value/, "Malformed athan time does not emit arithmetic warnings");
+
 #------------------------------------------------------------------------------
 # get_all_days tests
 #------------------------------------------------------------------------------

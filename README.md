@@ -219,9 +219,6 @@ Default congregation (iqama) times after athan:
 
 ```
 TaqweemQatar/
-├── .github/
-│   └── workflows/
-│       └── ci.yml      # CI workflow
 ├── .gitignore          # Git ignore rules
 ├── LICENSE             # MIT license
 ├── taqweem.csv        # Main dataset (human-readable)

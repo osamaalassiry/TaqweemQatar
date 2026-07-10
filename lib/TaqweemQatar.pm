@@ -105,7 +105,11 @@ sub get_times_with_iqama {
         next if $prayer eq 'sunrise';  # No iqama for sunrise
 
         my $athan_time = $times->{$prayer};
+        croak "Invalid athan time for $prayer: $athan_time"
+            unless defined $athan_time && $athan_time =~ /^\d{1,2}:\d{2}$/;
         my ($h, $m) = split /:/, $athan_time;
+        croak "Invalid athan time for $prayer: $athan_time"
+            unless $h >= 0 && $h <= 23 && $m >= 0 && $m <= 59;
         my $total_mins = $h * 60 + $m + $IQAMA[$i];
 
         my $iqama_h = int($total_mins / 60) % 24;
