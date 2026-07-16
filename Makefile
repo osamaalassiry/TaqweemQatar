@@ -30,7 +30,7 @@ $(JSON): $(SOURCE) $(SCRIPTS)/json_export.pl
 # Run tests
 test: $(SOURCE)
 	@echo "Running tests..."
-	cd $(SCRIPTS) && perl test_taqweem.pl
+	@perl $(SCRIPTS)/test_taqweem.pl; r1=$$?; echo ""; perl $(SCRIPTS)/test_taqweem_module.pl; r2=$$?; echo ""; exit $$((r1 > r2 ? r1 : r2))
 
 # Clean generated files
 clean:
@@ -39,8 +39,8 @@ clean:
 # Validate data files
 validate: $(SOURCE)
 	@echo "Validating CSV..."
-	@wc -l $(SOURCE) | grep -q "365" && echo "OK: 365 entries found" || echo "ERROR: Expected 365 entries"
-	@head -1 $(SOURCE) | grep -q "1/1" && echo "OK: Starts with 1/1" || echo "ERROR: Should start with 1/1"
+	@wc -l $(SOURCE) | grep -q "365" && echo "OK: 365 entries found" || { echo "ERROR: Expected 365 entries"; exit 1; }
+	@head -1 $(SOURCE) | grep -q "1/1" && echo "OK: Starts with 1/1" || { echo "ERROR: Should start with 1/1"; exit 1; }
 
 # Show statistics
 stats: $(SOURCE)

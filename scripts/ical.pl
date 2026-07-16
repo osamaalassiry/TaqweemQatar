@@ -23,6 +23,8 @@ use strict;
 use warnings;
 use Getopt::Long;
 use POSIX qw(strftime);
+use File::Basename;
+use File::Spec;
 
 # Configuration
 my @PRAYERS = qw(Fajr Sunrise Dhuhr Asr Maghrib Isha);
@@ -31,7 +33,7 @@ my @LENGTH  = (4, 0, 8, 8, 6, 8);       # Prayer duration in minutes
 
 # Parse command line options
 my $year = (localtime)[5] + 1900;  # Current year
-my $input_file = 'taqweem.dat';
+my $input_file = File::Spec->catfile(dirname(__FILE__), '..', 'taqweem.dat');
 my $include_athan = 1;
 my $include_prayer = 1;
 
@@ -66,6 +68,17 @@ sub generate_uid {
     return sprintf("%s-%02d%02d\@taqweem.qa", lc($prayer), $month, $day);
 }
 
+sub is_leap_year {
+    my ($year) = @_;
+    return ($year % 4 == 0 && $year % 100 != 0) || ($year % 400 == 0);
+}
+
+sub next_leap_year {
+    my ($year) = @_;
+    $year++ until is_leap_year($year);
+    return $year;
+}
+
 sub print_event {
     my ($summary, $start, $end, $uid) = @_;
 
@@ -80,6 +93,45 @@ sub print_event {
     print "STATUS:CONFIRMED\n";
     print "TRANSP:TRANSPARENT\n";
     print "END:VEVENT\n";
+}
+
+sub print_day_events {
+    my ($event_year, $month, $day, $times_ref) = @_;
+    my $event_count = 0;
+
+    # Generate events for each prayer
+    for my $i (0..5) {
+        my $prayer = $PRAYERS[$i];
+        my $time = $times_ref->[$i];
+
+        # Skip sunrise (index 1) - not a prayer time
+        next if $i == 1;
+
+        # Generate Athan event
+        if ($include_athan) {
+            my $start = format_datetime($event_year, $month, $day, $time);
+            my $end = format_datetime($event_year, $month, $day, $time + 2);
+            my $uid = generate_uid("athan-$prayer", $month, $day);
+
+            print_event("Athan $prayer", $start, $end, $uid);
+            $event_count++;
+        }
+
+        # Generate Prayer event
+        if ($include_prayer && $IQAMA[$i] > 0) {
+            my $prayer_start = $time + $IQAMA[$i];
+            my $prayer_end = $prayer_start + $LENGTH[$i];
+
+            my $start = format_datetime($event_year, $month, $day, $prayer_start);
+            my $end = format_datetime($event_year, $month, $day, $prayer_end);
+            my $uid = generate_uid("prayer-$prayer", $month, $day);
+
+            print_event("Prayer $prayer", $start, $end, $uid);
+            $event_count++;
+        }
+    }
+
+    return $event_count;
 }
 
 #-------------------------------------------------------------------------------
@@ -117,6 +169,7 @@ open my $fh, '<', $input_file
 
 my $entry_count = 0;
 my $event_count = 0;
+my @feb28_times;
 
 while (my $line = <$fh>) {
     chomp $line;
@@ -136,41 +189,17 @@ while (my $line = <$fh>) {
     my $month = int($encoded_date / 31) + 1;
 
     $entry_count++;
+    @feb28_times = @times if $month == 2 && $day == 28;
 
-    # Generate events for each prayer
-    for my $i (0..5) {
-        my $prayer = $PRAYERS[$i];
-        my $time = $times[$i];
-
-        # Skip sunrise (index 1) - not a prayer time
-        next if $i == 1;
-
-        # Generate Athan event
-        if ($include_athan) {
-            my $start = format_datetime($year, $month, $day, $time);
-            my $end = format_datetime($year, $month, $day, $time + 2);
-            my $uid = generate_uid("athan-$prayer", $month, $day);
-
-            print_event("Athan $prayer", $start, $end, $uid);
-            $event_count++;
-        }
-
-        # Generate Prayer event
-        if ($include_prayer && $IQAMA[$i] > 0) {
-            my $prayer_start = $time + $IQAMA[$i];
-            my $prayer_end = $prayer_start + $LENGTH[$i];
-
-            my $start = format_datetime($year, $month, $day, $prayer_start);
-            my $end = format_datetime($year, $month, $day, $prayer_end);
-            my $uid = generate_uid("prayer-$prayer", $month, $day);
-
-            print_event("Prayer $prayer", $start, $end, $uid);
-            $event_count++;
-        }
-    }
+    $event_count += print_day_events($year, $month, $day, \@times);
 }
 
 close $fh;
+
+if (@feb28_times) {
+    my $leap_year = next_leap_year($year);
+    $event_count += print_day_events($leap_year, 2, 29, \@feb28_times);
+}
 
 # Calendar footer
 print "END:VCALENDAR\n";

@@ -152,6 +152,8 @@ make validate
 make stats
 ```
 
+`make test` runs both `scripts/test_taqweem.pl` for data validation and `scripts/test_taqweem_module.pl` for the module API.
+
 ## Scripts
 
 Located in the `scripts/` directory:
@@ -163,6 +165,7 @@ Located in the `scripts/` directory:
 | `json_export.pl` | Exports to JSON format |
 | `expand.pl` | Decodes DAT to human-readable format |
 | `test_taqweem.pl` | Test suite for data validation |
+| `test_taqweem_module.pl` | Test suite for the module API: constructor, get_times, get_prayer, get_times_with_iqama, search_by_time, and error paths |
 
 ### Script Options
 
@@ -171,6 +174,12 @@ Located in the `scripts/` directory:
 ./ical.pl --year 2025           # Set base year
 ./ical.pl --no-athan            # Skip athan events
 ./ical.pl --no-prayer           # Skip prayer events
+```
+
+**expand.pl:**
+```bash
+./expand.pl                     # Uses taqweem.dat relative to repo root
+./expand.pl --input ../custom.dat   # Specify custom input file
 ```
 
 **json_export.pl:**
@@ -210,10 +219,16 @@ Default congregation (iqama) times after athan:
 
 ```
 TaqweemQatar/
+├── .github/
+│   └── workflows/
+│       └── ci.yml      # CI workflow
+├── .gitignore          # Git ignore rules
+├── LICENSE             # MIT license
 ├── taqweem.csv        # Main dataset (human-readable)
 ├── taqweem.dat        # Encoded dataset
 ├── taqweem.ics        # iCalendar format
 ├── taqweem.json       # JSON format
+├── qatarch.png        # Qatar Calendar House logo
 ├── Makefile           # Build system
 ├── lib/
 │   └── TaqweemQatar.pm  # Perl module
@@ -223,7 +238,8 @@ TaqweemQatar/
     ├── ical.pl        # ICS generator
     ├── json_export.pl # JSON exporter
     ├── expand.pl      # DAT decoder
-    └── test_taqweem.pl # Test suite
+    ├── test_taqweem.pl # Data validation test suite
+    └── test_taqweem_module.pl # Module API test suite
 ```
 
 ## Contributing

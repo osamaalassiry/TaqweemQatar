@@ -69,6 +69,13 @@ sub get_times {
     my $key = "$day/$month";
     my $data = $self->{_cache}{$key};
 
+    # Leap year fallback: Feb 29 uses Feb 28 times
+    unless ($data) {
+        if ($day == 29 && $month == 2) {
+            $data = $self->{_cache}{"28/2"};
+        }
+    }
+
     croak "No data found for $key" unless $data;
 
     # CSV order is reverse: isha, maghrib, asr, dhuhr, sunrise, fajr
@@ -130,6 +137,11 @@ sub get_all_days {
         my $days_in_month = _days_in_month($month);
         for my $day (1..$days_in_month) {
             my $key = "$day/$month";
+            # Leap year fallback: Feb 29 uses Feb 28 data
+            if ($day == 29 && $month == 2 && !exists $self->{_cache}{$key}) {
+                push @days, $self->get_times(29, 2);
+                next;
+            }
             next unless exists $self->{_cache}{$key};
             push @days, $self->get_times($day, $month);
         }
@@ -229,7 +241,7 @@ sub _find_data_file {
 
 sub _days_in_month {
     my ($month) = @_;
-    my @days = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);
+    my @days = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);
     return $days[$month - 1];
 }
 

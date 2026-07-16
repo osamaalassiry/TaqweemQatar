@@ -17,6 +17,7 @@
 use strict;
 use warnings;
 use File::Basename;
+use File::Temp qw(tempfile);
 
 # Configuration
 my $script_dir = dirname(__FILE__);
@@ -224,7 +225,7 @@ for my $i (0..$#csv_lines) {
     my $fajr_m = _to_minutes($fajr);
     if ($fajr_m < 190 || $fajr_m > 330) {  # 3:10 - 5:30
         $range_errors++;
-        print "# Line " . ($i+1) . ": Fajr ($fajr) outside expected range (3:30-5:30)\n"
+        print "# Line " . ($i+1) . ": Fajr ($fajr) outside expected range (3:10-5:30)\n"
             if $range_errors <= 3;
     }
 
@@ -240,7 +241,7 @@ for my $i (0..$#csv_lines) {
     my $maghrib_m = _to_minutes($maghrib);
     if ($maghrib_m < 990 || $maghrib_m > 1140) {  # 16:30 - 19:00
         $range_errors++;
-        print "# Line " . ($i+1) . ": Maghrib ($maghrib) outside expected range (17:00-19:00)\n"
+        print "# Line " . ($i+1) . ": Maghrib ($maghrib) outside expected range (16:30-19:00)\n"
             if $range_errors <= 3;
     }
 }
@@ -257,10 +258,75 @@ if (-f $dat_file) {
     close $fh;
 
     is(scalar(@dat_lines), 365, "DAT has 365 entries");
+
+    # Check iCalendar leap-day events use Feb 28 times
+    my @ical_lines;
+    my $ical_cmd = "$^X $script_dir/ical.pl --input $dat_file --year 2028 2>/dev/null";
+    if (open my $ical_fh, "$ical_cmd |") {
+        @ical_lines = <$ical_fh>;
+        close $ical_fh;
+    }
+
+    my %starts_by_summary;
+    my $current_start;
+    for my $line (@ical_lines) {
+        chomp $line;
+        if ($line =~ /^DTSTART;TZID=Asia\/Qatar:(\d{8}T\d{6})$/) {
+            $current_start = $1;
+        } elsif ($line =~ /^SUMMARY:(.+)$/ && defined $current_start) {
+            push @{ $starts_by_summary{$1} }, $current_start;
+            undef $current_start;
+        }
+    }
+
+    my @feb29_starts = grep { /^20280229T/ }
+        map { @$_ } values %starts_by_summary;
+    is(scalar(@feb29_starts), 10, "ICS has 10 February 29 events for leap year 2028");
+
+    my $leap_day_errors = 0;
+    for my $summary (keys %starts_by_summary) {
+        my %seen = map { $_ => 1 } @{ $starts_by_summary{$summary} };
+        for my $start (grep { /^20280229T/ } @{ $starts_by_summary{$summary} }) {
+            my $feb28_start = $start;
+            $feb28_start =~ s/^20280229/20280228/;
+            if (!$seen{$feb28_start}) {
+                $leap_day_errors++;
+                print "# Missing matching Feb 28 event for $summary at $start\n"
+                    if $leap_day_errors <= 3;
+            }
+        }
+    }
+
+    ok($leap_day_errors == 0, "ICS February 29 events match February 28 times ($leap_day_errors errors)");
 } else {
     ok(1, "DAT file not generated yet (skip)");
     ok(1, "DAT entries check (skip)");
+    ok(1, "ICS February 29 event count check (skip)");
+    ok(1, "ICS February 29 time match check (skip)");
 }
+
+# Test 11: expand.pl preserves a prayer exactly at midnight
+my ($midnight_fh, $midnight_file) = tempfile(
+    'expand-midnight-XXXX',
+    DIR    => "$script_dir/..",
+    UNLINK => 1,
+);
+print {$midnight_fh} "0,300,240,180,0,60,10\n";
+close $midnight_fh;
+
+my @midnight_output;
+my $expand_status = 1;
+if (open my $expand_fh, '-|', $^X, "$script_dir/expand.pl", '--input', $midnight_file) {
+    @midnight_output = <$expand_fh>;
+    $expand_status = close($expand_fh) ? 0 : ($? || 1);
+}
+
+ok($expand_status == 0, "expand.pl runs with synthetic midnight DAT input");
+is(scalar(@midnight_output), 12, "expand.pl prints all 6 prayers with a midnight time");
+like(join('', @midnight_output), qr/^1\/1,Dhuhr: Athan,00:00,00:02$/m,
+    "expand.pl prints the midnight prayer");
+like(join('', @midnight_output), qr/^1\/1,Isha: Athan,05:00,05:02$/m,
+    "expand.pl continues after the midnight prayer");
 
 #-------------------------------------------------------------------------------
 # Summary

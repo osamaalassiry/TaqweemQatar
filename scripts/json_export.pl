@@ -20,6 +20,8 @@
 use strict;
 use warnings;
 use Getopt::Long;
+use File::Basename;
+use File::Spec;
 
 # Configuration
 # CSV order is reverse: isha, maghrib, asr, dhuhr, sunrise, fajr
@@ -29,7 +31,7 @@ my @PRAYER_NAMES = qw(fajr sunrise dhuhr asr maghrib isha);
 my @PRAYER_ARABIC = ('الفجر', 'الشروق', 'الظهر', 'العصر', 'المغرب', 'العشاء');
 
 # Parse command line options
-my $input_file = '../taqweem.csv';
+my $input_file = File::Spec->catfile(dirname(__FILE__), '..', 'taqweem.csv');
 my $pretty = 0;
 
 GetOptions(
